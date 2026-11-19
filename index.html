@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한남랭 에디터</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding:wght@400;700&display=swap">
+<style>
+  :root {
+    --bg: #15161a; --panel: #1d1f25; --panel2: #24262d; --line: #32353e;
+    --fg: #e6e6e6; --dim: #8a8f9c; --accent: #ffb347;
+    --c-sel: #7cc4ff; --c-loop: #ff7ab8; --c-add: #7ee787; --c-sub: #ff7b72;
+    --c-out: #ffd866; --c-in: #c39bff; --c-nop: #5d6270; --c-err: #ff4d4d;
+    --mono: "Nanum Gothic Coding", "D2Coding", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, "Malgun Gothic", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { font-size: 18px; margin: 0 12px 0 0; letter-spacing: -0.5px; }
+  h1 small { color: var(--dim); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  button, select { font: inherit; color: var(--fg); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 11px; cursor: pointer; }
+  button:hover:not(:disabled), select:hover { border-color: var(--dim); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 700; }
+  .sp { flex: 1; }
+  kbd { font: 11px var(--mono); color: var(--dim); }
+
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); min-height: 0; }
+  .col { display: flex; flex-direction: column; min-height: 0; }
+  .col + .col { border-left: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; color: var(--dim); background: var(--panel); border-bottom: 1px solid var(--line); }
+  .bar b { color: var(--fg); font-weight: 600; }
+
+  /* 에디터: 투명 textarea 아래에 하이라이트 pre를 깐다 */
+  .editor { position: relative; flex: 1; min-height: 240px; overflow: hidden; background: var(--bg); }
+  .editor pre, .editor textarea {
+    position: absolute; inset: 0; margin: 0; padding: 14px 16px; border: 0;
+    font: 16px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; tab-size: 2;
+    overflow: auto;
+  }
+  .editor pre { pointer-events: none; color: var(--fg); }
+  .editor textarea { background: transparent; color: transparent; caret-color: var(--accent); resize: none; outline: none; }
+  .editor textarea::selection { background: rgba(255,179,71,.28); color: transparent; }
+  .t-sel { color: var(--c-sel); }
+  .t-loop, .t-end { color: var(--c-loop); font-weight: 700; }
+  .t-add { color: var(--c-add); }
+  .t-sub { color: var(--c-sub); }
+  .t-outc, .t-outn { color: var(--c-out); font-weight: 700; }
+  .t-in { color: var(--c-in); font-weight: 700; }
+  .t-nop { color: var(--c-nop); font-style: italic; }
+  .t-deco { color: #c9a0b8; }
+  .t-bad, .err { color: var(--c-err); text-decoration: wavy underline var(--c-err); }
+  .pair { background: rgba(255,122,184,.18); border-radius: 3px; outline: 1px solid rgba(255,122,184,.5); }
+  .cur { background: var(--accent); color: #111 !important; border-radius: 3px; }
+
+  .errors { max-height: 96px; overflow: auto; font: 12px/1.6 var(--mono); background: #2a1719; color: #ffb4ad; padding: 6px 12px; border-top: 1px solid #5b2a2d; }
+  .errors div { cursor: pointer; }
+  .errors div:hover { text-decoration: underline; }
+
+  section { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+  section h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--dim); padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  section h2 .sp { flex: 1; }
+  section h2 button { padding: 1px 8px; font-size: 11px; }
+  #outSec { flex: 1.3; }
+  #out { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font: 15px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; min-height: 80px; }
+  #out .msg { color: var(--dim); font-style: italic; }
+  #out .rterr { color: var(--c-err); }
+  .ask { display: flex; gap: 6px; align-items: center; padding: 8px 12px; background: #261f35; border-top: 1px solid #4a3a6a; }
+  .ask[hidden], .errors[hidden] { display: none; }
+  .ask label { color: var(--c-in); font: 700 14px var(--mono); }
+  .ask input { flex: 1; min-width: 0; font: 15px var(--mono); color: var(--fg); background: var(--bg); border: 1px solid #4a3a6a; border-radius: 6px; padding: 4px 8px; outline: none; }
+  #stdin { width: 100%; height: 44px; resize: vertical; border: 0; outline: none; padding: 8px 12px; background: var(--bg); color: var(--fg); font: 14px var(--mono); }
+  #mem { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; padding: 10px 12px; overflow: auto; max-height: 190px; }
+  .cell { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-family: var(--mono); min-width: 0; }
+  .cell .k { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell .v { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell .ch { font-size: 11px; color: var(--c-out); }
+  .cell.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .cell.zero .v { color: var(--dim); }
+
+  .tabs { display: flex; gap: 2px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; border-radius: 0; background: none; color: var(--dim); padding: 7px 10px; border-bottom: 2px solid transparent; }
+  .tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
+  .pane { padding: 10px 14px; overflow: auto; flex: 1; }
+  .pane[hidden] { display: none; }
+  table.ref { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.ref td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref td:first-child { font: 700 14px var(--mono); white-space: nowrap; }
+  .pane p { margin: 6px 0; color: var(--dim); font-size: 12.5px; }
+  .pane code { font-family: var(--mono); color: var(--fg); background: var(--panel2); padding: 0 4px; border-radius: 4px; }
+  #genText { width: 100%; height: 64px; resize: vertical; font: 14px var(--mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; outline: none; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--dim); }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--accent); color: #111; padding: 6px 14px; border-radius: 99px; font-weight: 700; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 820px) {
+    html, body { height: auto; }
+    main { display: block; }
+    .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+    .editor { height: 52vh; flex: none; }
+    #out { min-height: 140px; max-height: 40vh; }
+    .pane { max-height: 60vh; }
+    header { padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>한남랭<small>HannamLang · .hnl</small></h1>
+  <button id="run" class="primary" title="Ctrl+Enter">▶ 실행</button>
+  <button id="step" title="F8">한 단계</button>
+  <button id="stop" disabled title="Esc">■ 정지</button>
+  <button id="reset" title="상태 초기화">↺ 초기화</button>
+  <select id="speed" title="실행 속도">
+    <option value="0">즉시</option>
+    <option value="60">빠르게 (하이라이트)</option>
+    <option value="8">보통</option>
+    <option value="2">느리게</option>
+  </select>
+  <span class="sp"></span>
+  <select id="examples"><option value="">예제 불러오기…</option></select>
+  <button id="share" title="코드를 링크로 복사">링크 복사</button>
+  <button id="download" title=".hnl 파일로 저장">저장</button>
+  <button id="open" title=".hnl 파일 열기">열기</button>
+  <input id="file" type="file" accept=".hnl,.jwe,.txt" hidden>
+</header>
+
+<main>
+  <div class="col">
+    <div class="bar">
+      <span>명령 <b id="nOps">0</b></span>
+      <span>무시된 토큰 <b id="nNop">0</b></span>
+      <span class="sp"></span>
+      <span id="caretInfo"></span>
+    </div>
+    <div class="editor">
+      <pre id="hl" aria-hidden="true"></pre>
+      <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="한남랭 코드"></textarea>
+    </div>
+    <div class="errors" id="errors" hidden></div>
+  </div>
+
+  <div class="col">
+    <section id="outSec">
+      <h2>출력 <span class="sp"></span><span id="status">대기</span><button id="clearOut">지우기</button></h2>
+      <pre id="out"></pre>
+      <div class="ask" id="ask" hidden>
+        <label for="askIn">아 예?</label>
+        <input id="askIn" inputmode="numeric" placeholder="숫자 입력 후 Enter">
+        <button id="askGo">입력</button>
+      </div>
+    </section>
+    <section>
+      <h2>미리 넣어둘 입력 <span class="sp"></span><span style="font-weight:400">공백/줄바꿈으로 구분된 숫자 · 모자라면 실행 중에 물어봄</span></h2>
+      <textarea id="stdin" spellcheck="false" placeholder="예: 3 4"></textarea>
+    </section>
+    <section>
+      <h2>변수 <span class="sp"></span><span id="stepInfo" style="font-weight:400"></span></h2>
+      <div id="mem"></div>
+    </section>
+    <section style="flex:1;border-bottom:0">
+      <div class="tabs">
+        <button data-tab="ref" class="on">문법</button>
+        <button data-tab="gen">문장 → 코드</button>
+      </div>
+      <div class="pane" id="tab-ref">
+        <table class="ref">
+          <tr><td class="t-sel">엄.(n개)</td><td>n번 변수를 쓰겠다. <code>엄.</code>=1번, <code>엄...</code>=3번. 안 하면 1번. (<code>…</code>은 마침표 3개)</td></tr>
+          <tr><td class="t-loop">아뇨(n개)</td><td>n번 변수가 0이 아니면 반복문에 들어감, 0이면 짝 맞는 끝 뒤로 건너뜀. <code>아뇨</code>=1번, <code>아뇨아뇨</code>=2번</td></tr>
+          <tr><td class="t-end">줴줴이야</td><td>반복문 끝. 짝 맞는 아뇨로 돌아가서 다시 검사</td></tr>
+          <tr><td class="t-in">예?</td><td>숫자를 입력받아 현재 변수에 넣음</td></tr>
+          <tr><td class="t-deco">아</td><td>아무 뜻 없는 꾸밈. <code>아 줴줴이야</code>, <code>아예?</code>, <code>아아~</code> 아무렇게나</td></tr>
+          <tr><td class="t-add">요이~(n개)</td><td>현재 변수 += n. <code>요이~~~</code>는 +3, <code>요이</code>는 +1</td></tr>
+          <tr><td class="t-sub">쥐랄~(n개)</td><td>현재 변수 −= n. <code>쥐랄~~</code>는 −2, <code>쥐랄</code>은 −1</td></tr>
+          <tr><td class="t-add">요~(n개)이</td><td>현재 변수 += n번 변수. <code>요~~이</code>는 2번 변수만큼</td></tr>
+          <tr><td class="t-sub">쥐~(n개)랄</td><td>현재 변수 −= n번 변수</td></tr>
+          <tr><td class="t-sub">쥐~(n)랄~(m)</td><td>둘 다 붙이면 합쳐서: 현재 변수 −= n번 변수 + m. <code>요~~이~~~</code>는 2번 변수 + 3을 더함</td></tr>
+          <tr><td class="t-outc">티~원</td><td>현재 변수를 문자로 출력 (유니코드라 한글·이모지도 됨)</td></tr>
+          <tr><td class="t-outn">T~1</td><td>현재 변수를 숫자로 출력</td></tr>
+          <tr><td class="t-nop">그 외</td><td>무시됨 → 주석처럼 쓰면 됨</td></tr>
+        </table>
+        <p>명령은 공백으로 구분. 물결은 <code>~ ～ 〜</code> 다 됨. <code>쥐랄</code> 대신 <code>지랄</code>도 똑같이 먹힘. 물결 위치 주의: <code>요이~</code>는 +1, <code>요~이</code>는 1번 변수만큼 더함, <code>요~이~</code>는 1번 변수 + 1.</p>
+        <p>단축키: <code>Ctrl+Enter</code> 실행 · <code>F8</code> 한 단계 · <code>Esc</code> 정지 · 반복문에 커서를 두면 짝이 표시됨</p>
+      </div>
+      <div class="pane" id="tab-gen" hidden>
+        <textarea id="genText" placeholder="출력하고 싶은 문장">안녕하세요 한남랭!</textarea>
+        <div class="row">
+          <label><input type="checkbox" id="genCmt" checked> 글자 주석 달기</label>
+          <span class="sp"></span>
+          <button id="genGo" class="primary">코드로 바꾸기</button>
+        </div>
+        <p>1번 변수에 글자 코드를 만들고 <code>티~원</code>. 차이가 크면 2번(횟수)×3번(배수) 곱셈 반복을 씀. 에디터 내용을 바꾸지만 Ctrl+Z로 되돌릴 수 있음.</p>
+      </div>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="hannamlang.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const code = $('code'), hl = $('hl'), outEl = $('out');
+
+// ---------- 예제 ----------
+const EXAMPLES = {
+  '두 수 더하기': `엄. 아 예?
+엄.. 아 예?
+엄. 요~~이
+T~1`,
+  '곱하기': `엄.. 아 예?   ← 2번 = a
+엄... 아 예?  ← 3번 = b
+아뇨아뇨
+  엄. 요~~~이
+  엄.. 쥐랄
+아 줴줴이야
+엄. T~1`,
+  '카운트다운': `엄. 아 예?
+엄... 요이~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   ← 3번 = 공백(32)
+
+아뇨
+  엄. T~1
+  엄... 티~원
+  엄. 쥐랄
+아 줴줴이야`,
+  '피보나치': `엄. 아 예?        ← 몇 개?
+엄... 요이        ← 3번(b) = 1, 2번(a) = 0
+엄..... 요이~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   ← 5번 = 공백(32)
+
+아뇨
+  엄.. T~1 엄..... 티~원
+  엄.... 요~~이 요~~~이      ← 4번 = a + b
+  엄.. 쥐~~랄 요~~~이        ← a = b
+  엄... 쥐~~~랄 요~~~~이     ← b = 4번
+  엄.... 쥐~~~~랄           ← 4번 = 0
+  엄. 쥐랄
+아 줴줴이야`,
+  '소수 판정': `엄....... 예? 엄...... 요이~~ 엄. 요~~~~~~~이 쥐랄~~ 엄... 요~~~~~~~이 쥐랄 엄.... 요이 아뇨아뇨아뇨 엄.... 쥐~~~~랄 엄... 쥐~~~랄 줴줴이야 아뇨아뇨아뇨아뇨 엄........ 요이 엄. 쥐~랄 엄.... 쥐~~~~랄 줴줴이야 아뇨 엄.. 쥐~~랄 요~~~~~~~이  엄..... 쥐~~~~~랄 요~~~~~~이 아뇨아뇨 엄.. 쥐랄 엄..... 쥐랄 엄... 요~~~~~이 엄.... 요이 아뇨아뇨아뇨 엄.... 쥐~~~~랄 엄... 쥐~~~랄 줴줴이야 아뇨아뇨아뇨아뇨 엄..... 요~~~~~~이 엄.... 쥐~~~~랄 줴줴이야 줴줴이야 엄... 요~~~~~~이 쥐~~~~~랄 엄.... 요이 아뇨아뇨아뇨 엄.... 쥐~~~~랄 엄... 쥐~~~랄 줴줴이야 아뇨아뇨아뇨아뇨 엄........ 요이 엄.... 쥐~~~~랄 줴줴이야 엄...... 요이 엄. 쥐~랄 요~~~~~~~이 쥐~~~~~~랄 엄... 요~~~~~~~~이 아뇨아뇨아뇨 엄. 쥐~랄 엄... 쥐~~~랄 줴줴이야 줴줴이야 엄..... 쥐~~~~~랄 엄...... 쥐~~~~~~랄 엄... 요이~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 엄.. 요이~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 아뇨아뇨 엄...... 요~~~이 엄.. 쥐랄 줴줴이야 엄.. 요이~~~~~~~~~~~~~~ 아뇨아뇨 엄..... 요~~~~~~이 엄.. 쥐랄 줴줴이야 엄... 쥐~~~랄 엄.... 요이 엄... 요~~~~~~~~이 아뇨아뇨아뇨 엄..... 쥐랄~~~~ 티~원 티~원 엄.... 쥐~~~~랄 엄... 쥐~~~랄 줴줴이야 아뇨아뇨아뇨아뇨 엄..... 요이~~~~~~~~~~~~~~~ 티~원 티~원 엄.... 쥐~~~~랄 줴줴이야`,
+  '헬로 월드': null,
+  '안녕하세요': null,
+};
+EXAMPLES['헬로 월드'] = HannamLang.generate('Hello, World!\n');
+EXAMPLES['안녕하세요'] = HannamLang.generate('안녕하세요\n');
+for (const k of Object.keys(EXAMPLES)) $('examples').add(new Option(k, k));
+
+// ---------- 하이라이트 ----------
+let prog = null;
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+let curOp = -1, pairOps = [];
+
+function render() {
+  const src = code.value;
+  const errTok = new Set((prog?.errors || []).map((e) => e.tok.ti));
+  let html = '', last = 0;
+  for (const t of prog.tokens) {
+    html += esc(src.slice(last, t.start));
+    let cls = 't-' + t.type;
+    if (errTok.has(t.ti)) cls += ' err';
+    if (t.oi !== undefined && t.oi === curOp) cls += ' cur';
+    if (t.oi !== undefined && pairOps.includes(t.oi)) cls += ' pair';
+    html += `<span class="${cls}">${esc(src.slice(t.start, t.end))}</span>`;
+    last = t.end;
+  }
+  html += esc(src.slice(last)) + '\n';
+  hl.innerHTML = html;
+  hl.scrollTop = code.scrollTop;
+}
+
+function reparse() {
+  prog = HannamLang.parse(code.value);
+  $('nOps').textContent = prog.ops.length;
+  $('nNop').textContent = prog.tokens.filter((t) => t.type === 'nop').length;
+  const box = $('errors');
+  box.hidden = !prog.errors.length;
+  box.innerHTML = '';
+  for (const e of prog.errors) {
+    const d = document.createElement('div');
+    d.textContent = `${e.line}:${e.col}  ${e.tok.text} — ${e.msg}`;
+    d.onclick = () => { code.focus(); code.setSelectionRange(e.tok.start, e.tok.end); };
+    box.appendChild(d);
+  }
+  updatePair();
+  render();
+}
+
+// 커서 위치 명령 풀이 (물결 개수 세기 힘들어서)
+function describe(t) {
+  switch (t.type) {
+    case 'sel': return `${t.text} → ${t.n}번 변수 사용`;
+    case 'loop': return `${t.text} → ${t.n}번 변수가 0이 아니면 반복`;
+    case 'end': return '반복문 끝';
+    case 'in': return '숫자 입력';
+    case 'add': case 'sub': {
+      const amt = [t.n && `${t.n}번 변수`, t.k && `${t.k}`].filter(Boolean).join(' + ');
+      return `${t.text} → ${t.type === 'add' ? '+' : '−'}${t.n && t.k ? `(${amt})` : amt}`;
+    }
+    case 'outc': return '문자 출력';
+    case 'outn': return '숫자 출력';
+    case 'deco': return '아 → 꾸밈 (아무 일도 안 함)';
+    case 'bad': return t.msg;
+  }
+  return '';
+}
+
+function updatePair() {
+  const p = code.selectionStart;
+  const t = prog.tokens.find((t) => t.start <= p && p <= t.end && (t.type === 'loop' || t.type === 'end'));
+  pairOps = t && t.match !== undefined ? [t.oi, t.match] : [];
+  const lc = HannamLang.lineCol(code.value, p);
+  const at = prog.tokens.find((t) => t.start <= p && p <= t.end && t.type !== 'nop');
+  $('caretInfo').textContent = (at ? describe(at) + '  ·  ' : '') + `${lc.line}:${lc.col}`;
+}
+
+code.addEventListener('input', () => { reparse(); save(); if (machine) resetMachine(); });
+code.addEventListener('scroll', () => { hl.scrollTop = code.scrollTop; });
+for (const ev of ['keyup', 'click', 'select']) code.addEventListener(ev, () => { const before = pairOps.join(); updatePair(); if (pairOps.join() !== before) render(); });
+code.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) { e.preventDefault(); document.execCommand('insertText', false, '  '); }
+});
+
+// ---------- 실행 ----------
+let machine = null, running = false, timer = 0, out = '', inputQ = [], stdinUsed = 0;
+const MAX_OUT = 200000;
+
+function setStatus(s) { $('status').textContent = s; }
+function writeOut(s) { out += s; }
+function showOut(extraHtml = '') {
+  const shown = out.length > MAX_OUT ? out.slice(-MAX_OUT) : out;
+  outEl.innerHTML = esc(shown) + extraHtml;
+  outEl.scrollTop = outEl.scrollHeight;
+}
+
+function stdinNumbers() {
+  return $('stdin').value.split(/[\s,]+/).filter(Boolean);
+}
+
+function readNum() {
+  if (inputQ.length) return inputQ.shift();
+  const pre = stdinNumbers();
+  while (stdinUsed < pre.length) {
+    const s = pre[stdinUsed++];
+    if (/^[-+]?\d+$/.test(s)) return parseInt(s, 10);
+    throw new HannamLang.RunError(`미리 넣은 입력 "${s}"는 정수가 아님`, machine.ops[machine.pc]);
+  }
+  return undefined;
+}
+
+function resetMachine() {
+  stop();
+  machine = null; out = ''; inputQ = []; stdinUsed = 0; curOp = -1;
+  $('ask').hidden = true;
+  showOut();
+  setStatus('대기');
+  renderMem();
+  render();
+}
+
+function ensureMachine() {
+  if (machine) return true;
+  reparse();
+  if (prog.errors.length) {
+    showOut(`<span class="rterr">문법 오류 ${prog.errors.length}개 — 아래 빨간 목록 확인</span>`);
+    setStatus('오류');
+    return false;
+  }
+  out = ''; inputQ = []; stdinUsed = 0;
+  machine = new HannamLang.Machine(prog, { readNum, write: writeOut });
+  return true;
+}
+
+function finish(st, err) {
+  const wasRunning = running;
+  running = false;
+  clearTimeout(timer);
+  syncButtons();
+  if (err) {
+    const op = err.op;
+    const lc = op ? HannamLang.lineCol(code.value, op.start) : null;
+    showOut(`\n<span class="rterr">실행 오류${lc ? ` (${lc.line}:${lc.col} ${esc(op.text)})` : ''}: ${esc(err.message)}</span>`);
+    curOp = op ? op.oi : -1;
+    setStatus('오류');
+    machine = null;
+  } else if (st === 'halt') {
+    showOut(`${out ? '\n' : ''}<span class="msg">— 끝 (${machine.steps.toLocaleString()} 단계)</span>`);
+    curOp = -1;
+    setStatus('끝');
+  } else if (st === 'input') {
+    showOut();
+    curOp = machine.pc;
+    setStatus('입력 대기');
+    resumeRun = wasRunning;
+    $('ask').hidden = false;
+    $('askIn').focus();
+  } else {
+    showOut();
+    curOp = machine ? machine.pc : -1;
+    setStatus('일시정지');
+  }
+  renderMem();
+  render();
+}
+
+function tick() {
+  const rate = +$('speed').value;
+  const t0 = performance.now();
+  let st = 'ok';
+  try {
+    if (rate === 0) {
+      // 즉시: 프레임당 ~14ms 동안 몰아서
+      do { for (let i = 0; i < 20000 && st === 'ok'; i++) st = machine.step(); }
+      while (st === 'ok' && performance.now() - t0 < 14);
+    } else {
+      st = machine.step();
+    }
+  } catch (e) {
+    if (e instanceof HannamLang.RunError) return finish('error', e);
+    throw e;
+  }
+  if (st !== 'ok') return finish(st);
+  if (!running) return finish('pause');
+  if (rate === 0) {
+    showOut(); setStatus(`실행 중… ${machine.steps.toLocaleString()}`); renderMem();
+    timer = setTimeout(tick, 0);
+  } else {
+    curOp = machine.pc; showOut(); renderMem(); render(); setStatus('실행 중…');
+    timer = setTimeout(tick, 1000 / rate);
+  }
+}
+
+function runProg() {
+  if (running) return;
+  if (machine && machine.done) resetMachine();
+  if (!ensureMachine()) return;
+  $('ask').hidden = true;
+  running = true; syncButtons(); setStatus('실행 중…');
+  tick();
+}
+
+function stepProg() {
+  if (running) return;
+  if (machine && machine.done) resetMachine();
+  if (!ensureMachine()) return;
+  let st;
+  try { st = machine.step(); } catch (e) { if (e instanceof HannamLang.RunError) return finish('error', e); throw e; }
+  finish(st === 'ok' ? 'pause' : st);
+}
+
+function stop() {
+  if (!running) return;
+  running = false;
+  clearTimeout(timer);
+  finish('pause');
+}
+
+function submitAsk() {
+  const s = $('askIn').value.trim();
+  if (!/^[-+]?\d+$/.test(s)) { $('askIn').select(); toast('정수를 입력해야 함'); return; }
+  inputQ.push(parseInt(s, 10));
+  $('askIn').value = '';
+  $('ask').hidden = true;
+  if (resumeRun) runProg(); else stepProg();
+}
+let resumeRun = false;
+
+function syncButtons() {
+  $('run').disabled = running;
+  $('step').disabled = running;
+  $('stop').disabled = !running;
+}
+
+// ---------- 변수 보기 ----------
+function renderMem() {
+  const m = machine;
+  const cur = m ? m.cur : 1;
+  let n = Math.max(prog ? prog.maxVar : 1, m ? m.maxVar : 1, 4);
+  if (m) for (const k of m.vars.keys()) n = Math.max(n, k);
+  n = Math.min(n, 256);
+  const cells = [];
+  for (let i = 1; i <= n; i++) {
+    const v = m ? m.get(i) : 0;
+    const ch = v >= 32 && v <= 0x10ffff && !(v >= 0x7f && v < 0xa0) ? String.fromCodePoint(v) : '';
+    cells.push(`<div class="cell${i === cur ? ' on' : ''}${v === 0 ? ' zero' : ''}" title="${i}번 변수 = ${v}">
+      <div class="k">${i}번 · 엄${'.'.repeat(Math.min(i, 8))}${i > 8 ? '…' : ''}</div>
+      <div class="v">${v}</div><div class="ch">${ch ? esc(ch === ' ' ? '␣' : ch) : '&nbsp;'}</div></div>`);
+  }
+  $('mem').innerHTML = cells.join('');
+  $('stepInfo').textContent = m ? `${m.steps.toLocaleString()} 단계 · 현재 ${cur}번` : '';
+}
+
+// ---------- 버튼/단축키 ----------
+$('run').onclick = runProg;
+$('step').onclick = stepProg;
+$('stop').onclick = stop;
+$('reset').onclick = resetMachine;
+$('clearOut').onclick = () => { out = ''; showOut(); };
+$('askGo').onclick = submitAsk;
+$('askIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitAsk(); } });
+$('stdin').addEventListener('input', () => { if (machine && !running) resetMachine(); save(); });
+$('speed').onchange = () => { save(); };
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (running) return; resetMachine(); runProg(); }
+  else if (e.key === 'F8') { e.preventDefault(); stepProg(); }
+  else if (e.key === 'Escape') { stop(); }
+});
+
+$('examples').onchange = (e) => {
+  const k = e.target.value;
+  if (!k) return;
+  setCode(EXAMPLES[k]);
+  $('stdin').value = { '두 수 더하기': '3 4', '곱하기': '6 7', '카운트다운': '10', '피보나치': '15', '소수 판정': '97' }[k] || '';
+  e.target.value = '';
+  resetMachine(); save();
+};
+
+function setCode(text) {
+  code.focus();
+  code.select();
+  // execCommand를 쓰면 Ctrl+Z가 살아있음
+  if (!document.execCommand('insertText', false, text)) code.value = text;
+  code.setSelectionRange(0, 0);
+  code.scrollTop = 0;
+  reparse();
+}
+
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  $('tab-ref').hidden = b.dataset.tab !== 'ref';
+  $('tab-gen').hidden = b.dataset.tab !== 'gen';
+});
+$('genGo').onclick = () => {
+  const t = $('genText').value;
+  if (!t) return;
+  setCode(HannamLang.generate(t, { comments: $('genCmt').checked }));
+  resetMachine(); save();
+  toast(`${prog.ops.length.toLocaleString()}개 명령으로 바꿈`);
+};
+
+// 공유/저장
+const b64d = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)));
+function b64eBig(s) { // spread 인자 개수 제한 회피
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+$('share').onclick = async () => {
+  let h = '#c=' + b64eBig(code.value);
+  if ($('stdin').value.trim()) h += '&i=' + b64eBig($('stdin').value);
+  history.replaceState(null, '', h);
+  try { await navigator.clipboard.writeText(location.href); toast('링크 복사됨'); }
+  catch { toast('주소창의 링크를 복사하세요'); }
+};
+$('download').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([code.value], { type: 'text/plain' }));
+  a.download = 'program.hnl';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('open').onclick = () => $('file').click();
+$('file').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  setCode(await f.text());
+  resetMachine(); save();
+  e.target.value = '';
+};
+
+function save() {
+  try { localStorage.setItem('hannamlang', JSON.stringify({ code: code.value, stdin: $('stdin').value, speed: $('speed').value })); } catch {}
+}
+function load() {
+  const m = /#c=([^&]*)(?:&i=(.*))?/.exec(location.hash);
+  if (m) {
+    try { code.value = b64d(m[1]); $('stdin').value = m[2] ? b64d(m[2]) : ''; return; } catch {}
+  }
+  try {
+    const cur = localStorage.getItem('hannamlang');
+    const s = JSON.parse(cur || localStorage.getItem('jwejwe'));
+    // 줴줴랭 시절 저장본은 요이 요이 요이… 를 줄여서 가져옴
+    if (s && typeof s.code === 'string') { code.value = cur ? s.code : HannamLang.compress(s.code); $('stdin').value = s.stdin || ''; if (s.speed) $('speed').value = s.speed; return; }
+  } catch {}
+  code.value = EXAMPLES['피보나치'];
+  $('stdin').value = '15';
+}
+
+let toastT = 0;
+function toast(s) {
+  const t = $('toast');
+  t.textContent = s; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+load();
+reparse();
+renderMem();
+// 테스트 훅
+window.__jj = { get machine() { return machine; }, get out() { return out; }, get prog() { return prog; }, run: runProg, step: stepProg, reset: resetMachine, setCode, EXAMPLES };
+</script>
+</body>
+</html>
