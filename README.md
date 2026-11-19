@@ -1,6 +1,6 @@
 # 한남랭 (HannamLang)
 
-요즘 말투로 쓰는 난해한 프로그래밍 언어(esolang)와 브라우저 에디터.
+한남말투로 쓰는 난해한 프로그래밍 언어(esolang)와 브라우저 에디터.
 
 **바로 써보기: https://hannamlang.vercel.app**
 
